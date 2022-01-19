@@ -1,8 +1,8 @@
 {
   "name": "dbt-hdl",
   "displayName": "dbt-hdl",
-  "description": "Support for the DBT HDL workflow",
-  "version": "0.0.1",
+  "description": "Support for the DBT HDL flow",
+  "version": "0.1.0",
   "engines": {
     "vscode": "^1.63.0"
   },
@@ -23,7 +23,7 @@
     ],
     "configuration": [
       {
-        "title": "DBT HDL Workflow",
+        "title": "DBT HDL flow",
         "properties": {
           "dbt-hdl.questa-vcom-flags": {
             "type": "string",

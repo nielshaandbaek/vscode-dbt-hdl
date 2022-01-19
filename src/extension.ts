@@ -131,7 +131,7 @@ async function runHandler(
   run.end();
 }
 
-function discoverTests(controller: vscode.TestController, outputChannel: vscode.OutputChannel) {
+function discoverTests(controller: vscode.TestController) {
   if(vscode.workspace.workspaceFolders !== undefined) {
     let folder = vscode.workspace.workspaceFolders[0].uri.fsPath;
     execShell(`dbt build hdl-find-testcases=true hdl-show-testcases-file=true`, folder).then((result) => {
@@ -296,21 +296,33 @@ export function activate(context: vscode.ExtensionContext) {
     }
   );
 
-	// Use the console to output diagnostic information (console.log) and errors (console.error)
-	// This line of code will only be executed once when your extension is activated
-	console.log('Extension "dbt-hdl" is now active!');
-
 	// The command has been defined in the package.json file
 	// Now provide the implementation of the command with registerCommand
 	// The commandId parameter must match the command field in package.json
 	let disposable = vscode.commands.registerCommand('dbt-hdl.discoverTests', () => {
-		discoverTests(controller, outputChannel);
+		discoverTests(controller);
 	});
 
-  const watcher = vscode.workspace.createFileSystemWatcher('**/*.{sv,v,svh,vh}', false, false, false);
+  const watcher = vscode.workspace.createFileSystemWatcher('**/*.{go,sv}', false, false, false);
+  context.subscriptions.push(
+    watcher.onDidCreate((uri) => {
+      discoverTests(controller);
+    })
+  );
+  context.subscriptions.push(
+    watcher.onDidDelete((uri) => {
+      discoverTests(controller);
+    })
+  );
+  context.subscriptions.push(
+    watcher.onDidChange((uri) => {
+      discoverTests(controller);
+    })
+  );
   context.subscriptions.push(watcher);
 
-  discoverTests(controller, outputChannel);
+  // Discover tests on startup
+  discoverTests(controller);
 
 	context.subscriptions.push(disposable);
 }
