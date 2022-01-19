@@ -133,20 +133,13 @@ async function runHandler(
 
 function discoverTests(controller: vscode.TestController) {
   if(vscode.workspace.workspaceFolders !== undefined) {
+    const settings = vscode.workspace.getConfiguration();
+    const target = settings.get('dbt-hdl.target');
     let folder = vscode.workspace.workspaceFolders[0].uri.fsPath;
     execShell(`dbt build hdl-find-testcases=true hdl-show-testcases-file=true`, folder).then((result) => {
       const lines: Array<string> = result.split(/\r\n|\r|\n/);
 
-      const nameRegExp = new RegExp(
-        [
-            /^\s*/,
-            /\/\/.*\//,
-            /([^\/]+)\/Simulation/
-        ]
-            .map((x) => x.source)
-            .join('')
-      );
-
+      const nameRegExp = new RegExp("^\\s*\/\/.*\/([^\/]+)\/" + target);
       const paramsRegExp = new RegExp(
         [
             /\s*/,
@@ -195,7 +188,7 @@ function discoverTests(controller: vscode.TestController) {
         if (match !== null) {
           let target = match[0];
           let name = match[1];
-          let simulation = controller.createTestItem(`simulation:${target}`, `${name}/Simulation`);
+          let simulation = controller.createTestItem(`simulation:${target}`, `${name}/${settings.get("dbt-hdl.target")}`);
           let gotParams: boolean = false;
 
           // Find params
@@ -256,8 +249,6 @@ function discoverTests(controller: vscode.TestController) {
                 }
               });
             });
-
-            
           }
 
           controller.items.add(simulation);
@@ -270,9 +261,6 @@ function discoverTests(controller: vscode.TestController) {
 // this method is called when your extension is activated
 // your extension is activated the very first time the command is executed
 export function activate(context: vscode.ExtensionContext) {
-	// Output Channel
-  const outputChannel = vscode.window.createOutputChannel('dbt-hdl');
-
   // Test controller
   const controller = vscode.tests.createTestController(
     'dbt-hdl',

@@ -2,7 +2,7 @@
   "name": "dbt-hdl",
   "displayName": "dbt-hdl",
   "description": "Support for the DBT HDL flow",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "publisher": "nielshaandbaek",
   "author": {
       "name": "Niels Haandbaek",
@@ -35,6 +35,11 @@
       {
         "title": "DBT HDL flow",
         "properties": {
+          "dbt-hdl.target": {
+            "type": "string",
+            "default": "Simulation",
+            "description": "Name of the target to execute for simulation"
+          },
           "dbt-hdl.questa-vcom-flags": {
             "type": "string",
             "default": "",
@@ -112,6 +117,56 @@
             "description": "Select the simulation log output verbosity level."
           }
         }
+      }
+    ],
+    "problemMatchers": [
+      {
+        "name": "vlog-standard",
+        "owner": "DBT",
+        "source": "dbt-hdl",
+        "fileLocation": "autoDetect",
+        "pattern": [
+          {
+            "regexp": "\\*\\*\\s+(Error|Warning):\\s+\\((.*)\\)\\s+(.*)\\((\\d+)\\):\\s+(.*)",
+            "severity": 1,
+            "code": 2,
+            "file": 3,
+            "line": 4,
+            "message": 5
+          }
+        ]
+      },
+      {
+        "name": "vlog-suppressible",
+        "owner": "DBT",
+        "source": "dbt-hdl",
+        "fileLocation": "autoDetect",
+        "pattern": [
+          {
+            "regexp": "\\*\\*\\s+(Error|Warning) \\(suppressible\\):\\s+(.*)\\((\\d+)\\):\\s+\\((.*)\\)\\s+(.*)",
+            "severity": 1,
+            "code": 4,
+            "file": 2,
+            "line": 3,
+            "message": 5
+          }
+        ]
+      },
+      {
+        "name": "vlog-syntax",
+        "owner": "DBT",
+        "source": "systemverilog",
+        "fileLocation": "autoDetect",
+        "pattern": [
+          {
+            "regexp": "\\*\\*\\s+(Error|Warning):\\s+(.*)\\((\\d+)\\):\\s+\\((.*)\\)\\s+(.*)",
+            "severity": 1,
+            "code": 4,
+            "file": 2,
+            "line": 3,
+            "message": 5
+          }
+        ]
       }
     ]
   },
