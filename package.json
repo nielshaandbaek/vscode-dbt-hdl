@@ -1,0 +1,129 @@
+{
+  "name": "dbt-hdl",
+  "displayName": "dbt-hdl",
+  "description": "Support for the DBT HDL workflow",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.63.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onCommand:dbt-hdl.discoverTests",
+    "workspaceContains:**/BUILD.go"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "dbt-hdl.discoverTests",
+        "title": "Discover Tests"
+      }
+    ],
+    "configuration": [
+      {
+        "title": "DBT HDL Workflow",
+        "properties": {
+          "dbt-hdl.questa-vcom-flags": {
+            "type": "string",
+            "default": "",
+            "description": "Extra flags for the vcom command"
+          },
+          "dbt-hdl.questa-vlog-flags": {
+            "type": "string",
+            "default": "",
+            "description": "Extra flags for the vlog command"
+          },
+          "dbt-hdl.questa-vsim-flags": {
+            "type": "string",
+            "default": "",
+            "description": "Extra flags for the vsim command"
+          },
+          "dbt-hdl.xsim-xsim-flags": {
+            "type": "string",
+            "default": "",
+            "description": "Extra flags for the xsim command"
+          },
+          "dbt-hdl.xsim-xvlog-flags": {
+            "type": "string",
+            "default": "",
+            "description": "Extra flags for the xvlog command"
+          },
+          "dbt-hdl.xsim-xvhdl-flags": {
+            "type": "string",
+            "default": "",
+            "description": "Extra flags for the xvhdl command"
+          },
+          "dbt-hdl.xsim-xelab-debug": {
+            "type": "string",
+            "enum": [
+              "line",
+              "wave",
+              "drivers",
+              "readers",
+              "xlibs",
+              "all",
+              "typical",
+              "subprogram",
+              "off"
+            ],
+            "default": "typical",
+            "description": "Extra debug flags for the xelab command"
+          },
+          "dbt-hdl.questa-access": {
+            "type": "string",
+            "default": "rna",
+            "description": "Control access to simulation objects for debugging purposes"
+          },
+          "dbt-hdl.questa-lint": {
+            "type": "boolean",
+            "default": "false",
+            "description": "Enable additional lint information during compilation"
+          },
+          "dbt-hdl.hdl-simulator": {
+            "type": "string",
+            "enum": [
+              "xsim",
+              "questa"
+            ],
+            "default": "questa",
+            "description": "Select the simulator. Possible values are 'xsim' and 'questa'."
+          },
+          "dbt-hdl.verbosity": {
+            "type": "string",
+            "enum": [
+              "none",
+              "low",
+              "medium",
+              "high"
+            ],
+            "default": "none",
+            "description": "Select the simulation log output verbosity level."
+          }
+        }
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile && npm run lint",
+    "lint": "eslint src --ext ts",
+    "test": "node ./out/test/runTest.js"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.63.0",
+    "@types/glob": "^7.1.4",
+    "@types/mocha": "^9.0.0",
+    "@types/node": "14.x",
+    "@typescript-eslint/eslint-plugin": "^5.1.0",
+    "@typescript-eslint/parser": "^5.1.0",
+    "eslint": "^8.1.0",
+    "glob": "^7.1.7",
+    "mocha": "^9.1.3",
+    "typescript": "^4.4.4",
+    "@vscode/test-electron": "^1.6.2"
+  }
+}
