@@ -27,6 +27,32 @@ const execShell = (cmd: string, cwd: string) =>
         });
     });
 
+function getDbtArgs(): string {
+  const settings = vscode.workspace.getConfiguration();
+  const dbtSettings: string[] = [
+    "questa-vcom-flags",
+    "questa-vlog-flags",
+    "questa-vsim-flags",
+    "xsim-xsim-flags",
+    "xsim-xvlog-flags",
+    "xsim-xvhdl-flags",
+    "xsim-xelab-debug",
+    "questa-access",
+    "questa-lint",
+  ];
+
+  let dbtArgs: string = "";
+  dbtArgs = dbtArgs.concat(` hdl-simulator=${settings.get('dbt-hdl.hdl-simulator')}`);
+  
+  dbtSettings.forEach( (flag) => {
+    if (settings.get(`dbt-hdl.${flag}`) !== "") {
+      dbtArgs = dbtArgs.concat(` ${flag}=`+settings.get(`dbt-hdl.${flag}`));
+    }
+  });
+  
+  return dbtArgs;
+}
+
 async function runHandler(
   shouldDebug: boolean,
   controller: vscode.TestController,
@@ -36,8 +62,7 @@ async function runHandler(
   const run = controller.createTestRun(request);
   const queue: vscode.TestItem[] = [];
   const settings = vscode.workspace.getConfiguration();
-  let dbtArgs: string = "";
-  dbtArgs = dbtArgs.concat(`hdl-simulator=${settings.get('dbt-hdl.hdl-simulator')}`);
+  let dbtArgs: string = getDbtArgs();
 
   // Loop through all included tests, or all known tests, and add them to our queue
   if (request.include) {
@@ -73,39 +98,40 @@ async function runHandler(
       
       switch (fields[0]) {
         case "params": {
-          runtimeArgs = `-params=${fields[2]}`;
+          runtimeArgs = ` -params=${fields[2]}`;
         }
         case "testCaseGenerator": {
-          runtimeArgs = `-testcases=${fields[2]}`;
+          runtimeArgs = ` -testcases=${fields[2]}`;
           break;
         }
         case "paramsTestCaseGenerator": {
-          runtimeArgs = `-params=${fields[2]} -testcases=${fields[3]}`;
+          runtimeArgs = ` -params=${fields[2]} -testcases=${fields[3]}`;
           break;
         }
         case "testBench": {
-          runtimeArgs = `+testcases=${fields[2]}`;
+          runtimeArgs = ` +testcases=${fields[2]}`;
           break;
         }
         case "paramsTestBench": {
-          runtimeArgs = `-params=${fields[2]} +testcases=${fields[3]}`;
+          runtimeArgs = ` -params=${fields[2]} +testcases=${fields[3]}`;
           break;
         }
       }
       
-      runtimeArgs = `-verbosity=${settings.get('dbt-hdl.verbosity')} ${runtimeArgs}`;
+      runtimeArgs = ` -verbosity=${settings.get('dbt-hdl.verbosity')} ${runtimeArgs}`;
       
       let cmd: string = "";
       if (shouldDebug) {
-        cmd = `dbt run ${target} ${dbtArgs} : ${runtimeArgs}`;
+        cmd = `dbt run ${target}${dbtArgs} :${runtimeArgs}`;
       } else {
-        cmd = `dbt test ${target} ${dbtArgs} : ${runtimeArgs}`;
+        cmd = `dbt test ${target}${dbtArgs} :${runtimeArgs}`;
       }
 
       await execTest(test, cmd, folder)
         .then((result) => {
           processes.delete(test.id);
           run.passed(test, Date.now() - start);
+          run.appendOutput(cmd + "\r\n");
           run.appendOutput(String(result).split(/\r\n|\r|\n/).join("\r\n"));
         })
         .catch((result) => {
@@ -120,6 +146,7 @@ async function runHandler(
           
           processes.delete(test.id);
           run.failed(test, message, Date.now() - start);
+          run.appendOutput(cmd + "\r\n");
           run.appendOutput(String(result).split(/\r\n|\r|\n/).join("\r\n"));
         });
     }
@@ -139,7 +166,7 @@ function discoverTests(controller: vscode.TestController) {
     execShell(`dbt build hdl-find-testcases=true hdl-show-testcases-file=true`, folder).then((result) => {
       const lines: Array<string> = result.split(/\r\n|\r|\n/);
 
-      const nameRegExp = new RegExp("^\\s*\/\/.*\/([^\/]+)\/" + target);
+      const nameRegExp = new RegExp("\/\/.*\/([^\/]+)\/" + target);
       const paramsRegExp = new RegExp(
         [
             /\s*/,
