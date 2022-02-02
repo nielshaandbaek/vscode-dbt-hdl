@@ -2,8 +2,51 @@
 // Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
 import * as cp from "child_process";
+import { refreshDiagnostics, subscribeToDocumentChanges } from './diagnostics';
 
+interface TestInfo {
+  name?: string;
+  filename?: string;
+  target?: string;
+  params?: string;
+  genTestcases?: string;
+  tbTestcases?: string;
+};
+
+let tests = new WeakMap<vscode.TestItem, TestInfo>();
 let processes = new Map<string, cp.ChildProcess>();
+let controller: vscode.TestController | undefined = undefined;
+let diagnostics: vscode.DiagnosticCollection | undefined = undefined;
+
+function createTestInfo(options: TestInfo) {
+  let testInfo = { 
+    name: "", 
+    filename: "", 
+    target: "",
+    params: "", 
+    genTestcases: "", 
+    tbTestcases: "" 
+  };
+  if (options.name) {
+    testInfo.name = options.name;
+  }
+  if (options.filename) {
+    testInfo.filename = options.filename;
+  }
+  if (options.target) {
+    testInfo.target = options.target;
+  }
+  if (options.params) {
+    testInfo.params = options.params;
+  }
+  if (options.genTestcases) {
+    testInfo.genTestcases = options.genTestcases;
+  }
+  if (options.tbTestcases) {
+    testInfo.tbTestcases = options.tbTestcases;
+  }
+  return testInfo;
+}
 
 const execTest = (test: vscode.TestItem, cmd: string, cwd: string) =>
     new Promise<string>((resolve, reject) => {
@@ -55,21 +98,31 @@ function getDbtArgs(): string {
 
 async function runHandler(
   shouldDebug: boolean,
-  controller: vscode.TestController,
   request: vscode.TestRunRequest,
   token: vscode.CancellationToken
 ) {
+  if (!controller) {
+    console.log("No test controller defined!");
+    return;
+  }
+
+  if (!vscode.workspace.workspaceFolders) {
+    console.log("No workspace defined!");
+    return;
+  }
+
   const run = controller.createTestRun(request);
   const queue: vscode.TestItem[] = [];
-  const settings = vscode.workspace.getConfiguration();
-  let dbtArgs: string = getDbtArgs();
-
+  
   // Loop through all included tests, or all known tests, and add them to our queue
   if (request.include) {
     request.include.forEach(test => queue.push(test));
   } else {
     controller.items.forEach(test => queue.push(test));
   }
+
+  // Arguments will be the same for all tests
+  const dbtArgs: string = getDbtArgs();
 
   // For every test that was queued, try to run it. Call run.passed() or run.failed().
   // The `TestMessage` can contain extra information, like a failing location or
@@ -89,12 +142,13 @@ async function runHandler(
       continue;
     }
 
-    if ((test.children.size === 0) && (vscode.workspace.workspaceFolders !== undefined)) {
+    if (test.children.size === 0) {
       const folder = vscode.workspace.workspaceFolders[0].uri.fsPath;
       const start = Date.now();
       const fields = test.id.split(":");
       const target: string = fields[1];
-      let runtimeArgs: string = "";
+      const settings = vscode.workspace.getConfiguration();
+      let runtimeArgs: string = ` -verbosity=${settings.get('dbt-hdl.verbosity')}`;
       
       switch (fields[0]) {
         case "params": {
@@ -117,9 +171,7 @@ async function runHandler(
           break;
         }
       }
-      
-      runtimeArgs = ` -verbosity=${settings.get('dbt-hdl.verbosity')} ${runtimeArgs}`;
-      
+            
       let cmd: string = "";
       if (shouldDebug) {
         cmd = `dbt run ${target}${dbtArgs} :${runtimeArgs}`;
@@ -129,6 +181,7 @@ async function runHandler(
 
       await execTest(test, cmd, folder)
         .then((result) => {
+          refreshDiagnostics(result, diagnostics);
           processes.delete(test.id);
           run.passed(test, Date.now() - start);
           run.appendOutput(cmd + "\r\n");
@@ -144,6 +197,7 @@ async function runHandler(
             message = new vscode.TestMessage(result);
           }
           
+          refreshDiagnostics(result, diagnostics);
           processes.delete(test.id);
           run.failed(test, message, Date.now() - start);
           run.appendOutput(cmd + "\r\n");
@@ -158,15 +212,21 @@ async function runHandler(
   run.end();
 }
 
-function discoverTests(controller: vscode.TestController) {
-  if(vscode.workspace.workspaceFolders !== undefined) {
+function discoverTests(controller: vscode.TestController | undefined) {
+  if (!controller) {
+    console.log("No controller defined!");
+    return;
+  }
+
+  if (vscode.workspace.workspaceFolders) {
     const settings = vscode.workspace.getConfiguration();
     const target = settings.get('dbt-hdl.target');
     let folder = vscode.workspace.workspaceFolders[0].uri.fsPath;
+
     execShell(`dbt build hdl-find-testcases=true hdl-show-testcases-file=true`, folder).then((result) => {
       const lines: Array<string> = result.split(/\r\n|\r|\n/);
 
-      const nameRegExp = new RegExp("\/\/.*\/([^\/]+)\/" + target);
+      const nameRegExp = new RegExp("\/\/[^\\s]*\/([^\/]+)\/" + target);
       const paramsRegExp = new RegExp(
         [
             /\s*/,
@@ -199,23 +259,12 @@ function discoverTests(controller: vscode.TestController) {
             .join('')
       );
 
-      const testcaseRegExp = new RegExp(
-        [
-          /(?<=^\s*)/,
-          /`(?<type>TEST_CASE)\s*/,
-          /\(\s*"(?<name>[^"]+)"\s*\)/,
-        ]
-          .map((x) => x.source)
-          .join(''),
-        'mg'
-      );
-
       lines.forEach((line) => {
         let match = nameRegExp.exec(line);
         if (match !== null) {
           let target = match[0];
           let name = match[1];
-          let simulation = controller.createTestItem(`simulation:${target}`, `${name}/${settings.get("dbt-hdl.target")}`);
+          let simulation = controller.createTestItem(`simulation:${target}`, `${name}/${target}`);
           let gotParams: boolean = false;
 
           // Find params
@@ -224,6 +273,7 @@ function discoverTests(controller: vscode.TestController) {
             match[1].split(/,/).forEach((param) => {
               const test = controller.createTestItem(`params:${param}:${target}`, param);
               simulation.children.add(test);
+              tests.set(test, createTestInfo({target: target, name: name, params: param}));
             });
             gotParams = true;
           }
@@ -237,9 +287,12 @@ function discoverTests(controller: vscode.TestController) {
                 simulation.children.forEach(child => {
                   const test = controller.createTestItem(`paramsTestCaseGenerator:${target}:${child.label}:${testcase}`, testcase);
                   child.children.add(test);
+                  tests.set(test, createTestInfo({target: target, name: name, params: child.label, genTestcases: testcase}));
                 });
               } else {
-                simulation.children.add(controller.createTestItem(`testCaseGenerator:${target}:${testcase}`, testcase));
+                const test = controller.createTestItem(`testCaseGenerator:${target}:${testcase}`, testcase);
+                simulation.children.add(test);
+                tests.set(test, createTestInfo({target: target, name: name, genTestcases: testcase}));
               }
             });
           }
@@ -266,6 +319,7 @@ function discoverTests(controller: vscode.TestController) {
                       test.range = range;
                     }
                     child.children.add(test);
+                    tests.set(test, createTestInfo({target: target, name: name, params: child.label, tbTestcases: testcase}));
                   });
                 } else {
                   const test = controller.createTestItem(`testBench:${target}:${testcase}`, testcase, uri);
@@ -273,6 +327,7 @@ function discoverTests(controller: vscode.TestController) {
                     test.range = range;
                   }
                   simulation.children.add(test);
+                  tests.set(test, createTestInfo({target: target, name: name, tbTestcases: testcase}));
                 }
               });
             });
@@ -289,17 +344,23 @@ function discoverTests(controller: vscode.TestController) {
 // your extension is activated the very first time the command is executed
 export function activate(context: vscode.ExtensionContext) {
   // Test controller
-  const controller = vscode.tests.createTestController(
+  controller = vscode.tests.createTestController(
     'dbt-hdl',
     'Simulation'
   );
   context.subscriptions.push(controller);
 
+  // Diagnostics information
+  diagnostics = vscode.languages.createDiagnosticCollection("dbt-hdl");
+	context.subscriptions.push(diagnostics);
+
+  subscribeToDocumentChanges(context, diagnostics);
+
   const runProfile = controller.createRunProfile(
     'Run',
     vscode.TestRunProfileKind.Run,
     (request, token) => {
-      runHandler(false, controller, request, token);
+      runHandler(false, request, token);
     }
   );
   
@@ -307,7 +368,7 @@ export function activate(context: vscode.ExtensionContext) {
     'Debug',
     vscode.TestRunProfileKind.Debug,
     (request, token) => {
-      runHandler(true, controller, request, token);
+      runHandler(true, request, token);
     }
   );
 
