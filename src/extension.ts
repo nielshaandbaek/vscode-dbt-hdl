@@ -17,6 +17,7 @@ let tests = new WeakMap<vscode.TestItem, TestInfo>();
 let processes = new Map<string, cp.ChildProcess>();
 let controller: vscode.TestController | undefined = undefined;
 let diagnostics: vscode.DiagnosticCollection | undefined = undefined;
+let busy: boolean = false;
 
 function createTestInfo(options: TestInfo) {
   let testInfo = { 
@@ -212,13 +213,24 @@ async function runHandler(
   run.end();
 }
 
-function discoverTests(controller: vscode.TestController | undefined) {
+function discoverTests(controller: vscode.TestController | undefined, uri: vscode.Uri | undefined) {
   if (!controller) {
     console.log("No controller defined!");
     return;
   }
 
+  if (busy) {
+    console.log("dbt already running!");
+    return;
+  }
+
+  if (uri?.toString().match(/\/BUILD\//) || uri?.toString().match(/\/DEPS\//)) {
+    console.log("skipping update!");
+    return;
+  }
+
   if (vscode.workspace.workspaceFolders) {
+    busy = true;
     const settings = vscode.workspace.getConfiguration();
     const target = settings.get('dbt-hdl.target');
     let folder = vscode.workspace.workspaceFolders[0].uri.fsPath;
@@ -226,7 +238,7 @@ function discoverTests(controller: vscode.TestController | undefined) {
     execShell(`dbt build hdl-find-testcases=true hdl-show-testcases-file=true`, folder).then((result) => {
       const lines: Array<string> = result.split(/\r\n|\r|\n/);
 
-      const nameRegExp = new RegExp("\/\/[^\\s]*\/([^\/]+)\/" + target);
+      const nameRegExp = new RegExp("(\/\/[^\\s]*\/[^\/]+)\/" + target);
       const paramsRegExp = new RegExp(
         [
             /\s*/,
@@ -263,8 +275,8 @@ function discoverTests(controller: vscode.TestController | undefined) {
         let match = nameRegExp.exec(line);
         if (match !== null) {
           let target = match[0];
-          let name = match[1];
-          let simulation = controller.createTestItem(`simulation:${target}`, `${name}/${target}`);
+          let name = target;
+          let simulation = controller.createTestItem(`simulation:${target}`, `${name}`);
           let gotParams: boolean = false;
 
           // Find params
@@ -336,8 +348,29 @@ function discoverTests(controller: vscode.TestController | undefined) {
           controller.items.add(simulation);
         }
       });
-    });
+      busy = false;
+    }).catch((result) => { busy = false; });
   } 
+}
+
+function createWatcher(context: vscode.ExtensionContext, pattern: vscode.GlobPattern) {
+  const watcher = vscode.workspace.createFileSystemWatcher(pattern, false, false, false);
+  context.subscriptions.push(
+    watcher.onDidCreate((uri) => {
+      discoverTests(controller, uri);
+    })
+  );
+  context.subscriptions.push(
+    watcher.onDidDelete((uri) => {
+      discoverTests(controller, uri);
+    })
+  );
+  context.subscriptions.push(
+    watcher.onDidChange((uri) => {
+      discoverTests(controller, uri);
+    })
+  );
+  context.subscriptions.push(watcher);
 }
 
 // this method is called when your extension is activated
@@ -376,29 +409,15 @@ export function activate(context: vscode.ExtensionContext) {
 	// Now provide the implementation of the command with registerCommand
 	// The commandId parameter must match the command field in package.json
 	let disposable = vscode.commands.registerCommand('dbt-hdl.discoverTests', () => {
-		discoverTests(controller);
+		discoverTests(controller, undefined);
 	});
 
-  const watcher = vscode.workspace.createFileSystemWatcher('**/*.{go,sv}', false, false, false);
-  context.subscriptions.push(
-    watcher.onDidCreate((uri) => {
-      discoverTests(controller);
-    })
-  );
-  context.subscriptions.push(
-    watcher.onDidDelete((uri) => {
-      discoverTests(controller);
-    })
-  );
-  context.subscriptions.push(
-    watcher.onDidChange((uri) => {
-      discoverTests(controller);
-    })
-  );
-  context.subscriptions.push(watcher);
-
+  // Create file system watchers
+  createWatcher(context, '**/BUILD.go');
+  createWatcher(context, '**/*.{v,sv,svh}');
+ 
   // Discover tests on startup
-  discoverTests(controller);
+  discoverTests(controller, undefined);
 
 	context.subscriptions.push(disposable);
 }
