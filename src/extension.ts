@@ -180,22 +180,22 @@ async function runHandler(
         cmd = `dbt test ${target}${dbtArgs} :${runtimeArgs}`;
       }
 
+      run.appendOutput(cmd + "\r\n");
       await execTest(test, cmd, folder)
         .then((result) => {
           refreshDiagnostics(result, diagnostics);
           processes.delete(test.id);
           run.passed(test, Date.now() - start);
-          run.appendOutput(cmd + "\r\n");
           run.appendOutput(String(result).split(/\r\n|\r|\n/).join("\r\n"));
         })
         .catch((result) => {
-          const errorsRegExp = new RegExp(/errors:\s*(\d+)\s*,\s*warnings:\s*(\d+)/, 'i');
-          const match = errorsRegExp.exec(result);
-          let message: vscode.TestMessage;
-          if (match !== null) {
+          const errorsRegExp = new RegExp(/errors:\s*(\d+)\s*,\s*warnings:\s*(\d+)/, 'igm');
+          let match;
+          let message: vscode.TestMessage = new vscode.TestMessage(result);
+
+          // Get last reported errors
+          while ((match = errorsRegExp.exec(result)) !== null) {
             message = new vscode.TestMessage(match[0]);
-          } else {
-            message = new vscode.TestMessage(result);
           }
           
           refreshDiagnostics(result, diagnostics);

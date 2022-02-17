@@ -2,7 +2,7 @@
   "name": "dbt-hdl",
   "displayName": "dbt-hdl",
   "description": "Support for the DBT HDL flow",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "publisher": "nielshaandbaek",
   "author": {
     "name": "Niels Haandbaek",
